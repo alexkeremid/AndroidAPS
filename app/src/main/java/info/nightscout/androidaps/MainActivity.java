@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import info.nightscout.androidaps.Services.AlarmSoundService;
+import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.events.EventAppExit;
 import info.nightscout.androidaps.events.EventPreferenceChange;
 import info.nightscout.androidaps.events.EventRefreshGui;
@@ -57,8 +58,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     static final int CASE_STORAGE = 0x1;
     static final int CASE_SMS = 0x2;
+    static final int CASE_LOCATION = 0x3;
 
     private boolean askForSMS = false;
+    private boolean askForLocation = true;
 
     ImageButton menuButton;
 
@@ -79,6 +82,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     Manifest.permission.WRITE_EXTERNAL_STORAGE}, CASE_STORAGE);
         }
         askForBatteryOptimizationPermission();
+        checkUpgradeToProfileTarget();
         if (Config.logFunctionCalls)
             log.debug("onCreate");
 
@@ -93,9 +97,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         final PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (ev.lock) {
             mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "AAPS");
-            mWakeLock.acquire();
+            if (!mWakeLock.isHeld())
+                mWakeLock.acquire();
         } else {
-            if (mWakeLock != null)
+            if (mWakeLock != null && mWakeLock.isHeld())
                 mWakeLock.release();
         }
     }
@@ -107,12 +112,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                recreate();
-                try { // activity may be destroyed
-                    setUpTabs(true);
-                } catch (IllegalStateException e) {
-                    e.printStackTrace();
+                if(ev.recreate) {
+                    recreate();
+                }else {
+                    try { // activity may be destroyed
+                        setUpTabs(true);
+                    } catch (IllegalStateException e) {
+                        log.error("Unhandled exception", e);
+                    }
                 }
+
                 boolean lockScreen = BuildConfig.NSCLIENTOLNY && SP.getBoolean("lockscreen", false);
                 if (lockScreen)
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -154,6 +163,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    private void checkUpgradeToProfileTarget() { // TODO: can be removed in the future
+        boolean oldKeyExists = SP.contains("openapsma_min_bg");
+        if (oldKeyExists) {
+            Profile profile = MainApp.getConfigBuilder().getProfile();
+            String oldRange = SP.getDouble("openapsma_min_bg", 0d) + " - " + SP.getDouble("openapsma_max_bg", 0d);
+            String newRange = "";
+            if (profile != null) {
+                newRange = profile.getTargetLow() + " - " + profile.getTargetHigh();
+            }
+            String message = "Target range is changed in current version.\n\nIt's not taken from preferences but from profile.\n\n!!! REVIEW YOUR SETTINGS !!!";
+            message += "\n\nOld settings: " + oldRange;
+            message += "\nProfile settings: " + newRange;
+            OKDialog.show(this, "Target range change", message, new Runnable() {
+                @Override
+                public void run() {
+                    SP.remove("openapsma_min_bg");
+                    SP.remove("openapsma_max_bg");
+                    SP.remove("openapsma_target_bg");
+                }
+            });
+        }
+    }
+
     //check for sms permission if enable in prefernces
     @Subscribe
     public void onStatusEvent(final EventPreferenceChange ev) {
@@ -176,12 +208,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onResume() {
         super.onResume();
         askForSMSPermissions();
+        askForLocationPermissions();
     }
 
     @Override
     public void onDestroy() {
         if (mWakeLock != null)
-            mWakeLock.release();
+            if (mWakeLock.isHeld())
+                mWakeLock.release();
         super.onDestroy();
     }
 
@@ -229,6 +263,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    private synchronized void askForLocationPermissions() {
+        if (askForLocation) { //only when settings were changed an MainActivity resumes.
+            askForLocation = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                askForPermission(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION}, CASE_LOCATION);
+            }
+        }
+    }
+
     private void askForPermission(String[] permission, Integer requestCode) {
         boolean test = false;
         for (int i = 0; i < permission.length; i++) {
@@ -252,6 +297,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         alert.setPositiveButton(R.string.ok, null);
                         alert.show();
                         break;
+                    case CASE_LOCATION:
                     case CASE_SMS:
                         break;
                 }
@@ -294,6 +340,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                                     @Override
                                     public void run() {
                                         Intent i = new Intent(v.getContext(), PreferencesActivity.class);
+                                        i.putExtra("id", -1);
                                         startActivity(i);
                                     }
                                 }, null);
@@ -326,7 +373,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             case R.id.nav_about:
                                 AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
                                 builder.setTitle(getString(R.string.app_name) + " " + BuildConfig.VERSION);
-                                if (Config.NSCLIENT)
+                                if (Config.NSCLIENT|| Config.G5UPLOADER)
                                     builder.setIcon(R.mipmap.yellowowl);
                                 else
                                     builder.setIcon(R.mipmap.blueowl);

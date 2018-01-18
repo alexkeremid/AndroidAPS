@@ -34,6 +34,15 @@ import info.nightscout.utils.ToastUtils;
 public class NSClientInternalPlugin implements PluginBase {
     private static Logger log = LoggerFactory.getLogger(NSClientInternalPlugin.class);
 
+    static NSClientInternalPlugin nsClientInternalPlugin;
+
+    static public NSClientInternalPlugin getPlugin() {
+        if (nsClientInternalPlugin == null) {
+            nsClientInternalPlugin = new NSClientInternalPlugin();
+        }
+        return nsClientInternalPlugin;
+    }
+
     private boolean fragmentEnabled = true;
     private boolean fragmentVisible = true;
 
@@ -113,7 +122,7 @@ public class NSClientInternalPlugin implements PluginBase {
 
     @Override
     public boolean showInList(int type) {
-        return !Config.NSCLIENT;
+        return !Config.NSCLIENT && !Config.G5UPLOADER;
     }
 
     @Override
@@ -124,6 +133,11 @@ public class NSClientInternalPlugin implements PluginBase {
     @Override
     public void setFragmentVisible(int type, boolean fragmentVisible) {
         if (type == GENERAL) this.fragmentVisible = fragmentVisible;
+    }
+
+    @Override
+    public int getPreferencesId() {
+        return R.xml.pref_nsclientinternal;
     }
 
     private ServiceConnection mConnection = new ServiceConnection() {
@@ -159,7 +173,7 @@ public class NSClientInternalPlugin implements PluginBase {
         MainApp.bus().post(new EventNSClientUpdateGUI());
     }
 
-    void clearLog() {
+    synchronized void clearLog() {
         handler.post(new Runnable() {
             @Override
             public void run() {
@@ -169,7 +183,7 @@ public class NSClientInternalPlugin implements PluginBase {
         });
     }
 
-    private void addToLog(final EventNSClientNewLog ev) {
+    private synchronized void addToLog(final EventNSClientNewLog ev) {
         handler.post(new Runnable() {
             @Override
             public void run() {
@@ -183,7 +197,7 @@ public class NSClientInternalPlugin implements PluginBase {
         });
     }
 
-    static void updateLog() {
+    static synchronized void updateLog() {
         try {
             StringBuilder newTextLog = new StringBuilder();
             List<EventNSClientNewLog> temporaryList = new ArrayList<>(listLog);
@@ -207,5 +221,9 @@ public class NSClientInternalPlugin implements PluginBase {
 
     public String url() {
         return NSClientService.nsURL;
+    }
+
+    public boolean hasWritePermission() {
+        return nsClientService.hasWriteAuth;
     }
 }

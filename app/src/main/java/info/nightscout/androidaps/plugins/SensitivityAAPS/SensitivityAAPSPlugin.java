@@ -30,8 +30,8 @@ import info.nightscout.utils.SafeParse;
 public class SensitivityAAPSPlugin implements PluginBase, SensitivityInterface{
     private static Logger log = LoggerFactory.getLogger(SensitivityAAPSPlugin.class);
 
-    private static boolean fragmentEnabled = true;
-    private static boolean fragmentVisible = false;
+    private boolean fragmentEnabled = true;
+    private boolean fragmentVisible = false;
 
     static SensitivityAAPSPlugin plugin = null;
 
@@ -96,6 +96,11 @@ public class SensitivityAAPSPlugin implements PluginBase, SensitivityInterface{
         if (type == SENSITIVITY) this.fragmentVisible = fragmentVisible;
     }
 
+    @Override
+    public int getPreferencesId() {
+        return R.xml.pref_absorption_aaps;
+    }
+
 
     @Override
     public AutosensResult detectSensitivity(long fromTime, long toTime) {
@@ -113,7 +118,7 @@ public class SensitivityAAPSPlugin implements PluginBase, SensitivityInterface{
             return new AutosensResult();
         }
 
-        AutosensData current = IobCobCalculatorPlugin.getAutosensData(toTime);
+        AutosensData current = IobCobCalculatorPlugin.getAutosensData(toTime); // this is running inside lock already
         if (current == null) {
             log.debug("No autosens data available");
             return new AutosensResult();

@@ -1,11 +1,9 @@
 package info.nightscout.androidaps.plugins.Actions.dialogs;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.support.v4.app.DialogFragment;
 import android.support.v7.app.AlertDialog;
 import android.view.LayoutInflater;
@@ -14,43 +12,41 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
-import android.widget.RelativeLayout;
 
 import com.crashlytics.android.answers.Answers;
 import com.crashlytics.android.answers.CustomEvent;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.text.DecimalFormat;
 
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.R;
-import info.nightscout.androidaps.data.PumpEnactResult;
-import info.nightscout.androidaps.interfaces.PumpDescription;
-import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.data.Profile;
-import info.nightscout.utils.PlusMinusEditText;
+import info.nightscout.androidaps.interfaces.PumpDescription;
+import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
+import info.nightscout.androidaps.plugins.Overview.Dialogs.ErrorHelperActivity;
+import info.nightscout.androidaps.queue.Callback;
+import info.nightscout.utils.NumberPicker;
 import info.nightscout.utils.SafeParse;
 
 public class NewTempBasalDialog extends DialogFragment implements View.OnClickListener, RadioGroup.OnCheckedChangeListener {
+    private static Logger log = LoggerFactory.getLogger(NewTempBasalDialog.class);
 
     RadioButton percentRadio;
     RadioButton absoluteRadio;
     RadioGroup basalTypeRadioGroup;
-    RelativeLayout typeSelectorLayout;
+    LinearLayout typeSelectorLayout;
 
     LinearLayout percentLayout;
     LinearLayout absoluteLayout;
 
-    PlusMinusEditText basalPercent;
-    PlusMinusEditText basalAbsolute;
-    PlusMinusEditText duration;
-
-    Handler mHandler;
-    public static HandlerThread mHandlerThread;
+    NumberPicker basalPercent;
+    NumberPicker basalAbsolute;
+    NumberPicker duration;
 
     public NewTempBasalDialog() {
-        mHandlerThread = new HandlerThread(NewTempBasalDialog.class.getSimpleName());
-        mHandlerThread.start();
-        this.mHandler = new Handler(mHandlerThread.getLooper());
     }
 
     @Override
@@ -65,22 +61,24 @@ public class NewTempBasalDialog extends DialogFragment implements View.OnClickLi
         percentRadio = (RadioButton) view.findViewById(R.id.overview_newtempbasal_percent_radio);
         basalTypeRadioGroup = (RadioGroup) view.findViewById(R.id.overview_newtempbasal_radiogroup);
         absoluteRadio = (RadioButton) view.findViewById(R.id.overview_newtempbasal_absolute_radio);
-        typeSelectorLayout = (RelativeLayout) view.findViewById(R.id.overview_newtempbasal_typeselector_layout);
+        typeSelectorLayout = (LinearLayout) view.findViewById(R.id.overview_newtempbasal_typeselector_layout);
 
-        PumpDescription pumpDescription = MainApp.getConfigBuilder().getPumpDescription();
+        PumpDescription pumpDescription = ConfigBuilderPlugin.getActivePump().getPumpDescription();
 
-        basalPercent = new PlusMinusEditText(view, R.id.overview_newtempbasal_basalpercentinput, R.id.overview_newtempbasal_basalpercent_plus, R.id.overview_newtempbasal_basalpercent_minus,
-                100d, 0d, (double) pumpDescription.maxTempPercent, (double) pumpDescription.tempPercentStep, new DecimalFormat("0"), true);
+        basalPercent = (NumberPicker) view.findViewById(R.id.overview_newtempbasal_basalpercentinput);
+        double maxTempPercent = pumpDescription.maxTempPercent;
+        double tempPercentStep = pumpDescription.tempPercentStep;
+        basalPercent.setParams(100d, 0d, maxTempPercent, tempPercentStep, new DecimalFormat("0"), true);
 
         Profile profile = MainApp.getConfigBuilder().getProfile();
-        Double currentBasal = profile.getBasal();
-        basalAbsolute = new PlusMinusEditText(view, R.id.overview_newtempbasal_basalabsoluteinput, R.id.overview_newtempbasal_basalabsolute_plus, R.id.overview_newtempbasal_basalabsolute_minus,
-                currentBasal, 0d, pumpDescription.maxTempAbsolute, pumpDescription.tempAbsoluteStep, new DecimalFormat("0.00"), true);
+        Double currentBasal = profile != null ? profile.getBasal() : 0d;
+        basalAbsolute = (NumberPicker) view.findViewById(R.id.overview_newtempbasal_basalabsoluteinput);
+        basalAbsolute.setParams(currentBasal, 0d, pumpDescription.maxTempAbsolute, pumpDescription.tempAbsoluteStep, new DecimalFormat("0.00"), true);
 
-        double tempDurationStep = MainApp.getConfigBuilder().getPumpDescription().tempDurationStep;
-        double tempMaxDuration = MainApp.getConfigBuilder().getPumpDescription().tempMaxDuration;
-        duration = new PlusMinusEditText(view, R.id.overview_newtempbasal_duration, R.id.overview_newtempbasal_duration_plus, R.id.overview_newtempbasal_duration_minus,
-                tempDurationStep, tempDurationStep, tempMaxDuration, tempDurationStep, new DecimalFormat("0"), false);
+        double tempDurationStep = pumpDescription.tempDurationStep;
+        double tempMaxDuration = pumpDescription.tempMaxDuration;
+        duration = (NumberPicker) view.findViewById(R.id.overview_newtempbasal_duration);
+        duration.setParams(tempDurationStep, tempDurationStep, tempMaxDuration, tempDurationStep, new DecimalFormat("0"), false);
 
         if ((pumpDescription.tempBasalStyle & PumpDescription.PERCENT) == PumpDescription.PERCENT && (pumpDescription.tempBasalStyle & PumpDescription.ABSOLUTE) == PumpDescription.ABSOLUTE) {
             // Both allowed
@@ -104,14 +102,10 @@ public class NewTempBasalDialog extends DialogFragment implements View.OnClickLi
         view.findViewById(R.id.ok).setOnClickListener(this);
         view.findViewById(R.id.cancel).setOnClickListener(this);
         basalTypeRadioGroup.setOnCheckedChangeListener(this);
-        return view;
-    }
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (getDialog() != null)
-            getDialog().getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        setCancelable(true);
+        getDialog().setCanceledOnTouchOutside(false);
+        return view;
     }
 
     @Override
@@ -145,37 +139,29 @@ public class NewTempBasalDialog extends DialogFragment implements View.OnClickLi
                     final Double finalBasal = absolute;
                     final int finalDurationInMinutes = durationInMinutes;
 
-                    final Context context = getContext();
-                    AlertDialog.Builder builder = new AlertDialog.Builder(context);
+                    AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
                     builder.setTitle(this.getContext().getString(R.string.confirmation));
                     builder.setMessage(confirmMessage);
                     builder.setPositiveButton(getString(R.string.ok), new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int id) {
-                            final PumpInterface pump = MainApp.getConfigBuilder();
-                            mHandler.post(new Runnable() {
+                            Callback callback = new Callback() {
                                 @Override
                                 public void run() {
-                                    PumpEnactResult result;
-                                    if (setAsPercent) {
-                                        result = pump.setTempBasalPercent(finalBasalPercent, finalDurationInMinutes);
-                                    } else {
-                                        result = pump.setTempBasalAbsolute(finalBasal, finalDurationInMinutes);
-                                    }
                                     if (!result.success) {
-                                        if (context instanceof Activity) {
-                                            Activity activity = (Activity) context;
-                                            if (activity.isFinishing()) {
-                                                return;
-                                            }
-                                        }
-                                        AlertDialog.Builder builder = new AlertDialog.Builder(context);
-                                        builder.setTitle(MainApp.sResources.getString(R.string.tempbasaldeliveryerror));
-                                        builder.setMessage(result.comment);
-                                        builder.setPositiveButton(MainApp.sResources.getString(R.string.ok), null);
-                                        builder.show();
+                                        Intent i = new Intent(MainApp.instance(), ErrorHelperActivity.class);
+                                        i.putExtra("soundid", R.raw.boluserror);
+                                        i.putExtra("status", result.comment);
+                                        i.putExtra("title", MainApp.sResources.getString(R.string.tempbasaldeliveryerror));
+                                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                        MainApp.instance().startActivity(i);
                                     }
                                 }
-                            });
+                            };
+                            if (setAsPercent) {
+                                ConfigBuilderPlugin.getCommandQueue().tempBasalPercent(finalBasalPercent, finalDurationInMinutes, true, callback);
+                            } else {
+                                ConfigBuilderPlugin.getCommandQueue().tempBasalAbsolute(finalBasal, finalDurationInMinutes, true, callback);
+                            }
                             Answers.getInstance().logCustom(new CustomEvent("TempBasal"));
                         }
                     });
@@ -184,7 +170,7 @@ public class NewTempBasalDialog extends DialogFragment implements View.OnClickLi
                     dismiss();
 
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("Unhandled exception", e);
                 }
                 break;
             case R.id.cancel:

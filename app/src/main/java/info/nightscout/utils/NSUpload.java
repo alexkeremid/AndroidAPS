@@ -3,31 +3,37 @@ package info.nightscout.utils;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.Services.Intents;
 import info.nightscout.androidaps.data.DetailedBolusInfo;
+import info.nightscout.androidaps.data.Profile;
+import info.nightscout.androidaps.db.BgReading;
 import info.nightscout.androidaps.db.CareportalEvent;
 import info.nightscout.androidaps.db.ExtendedBolus;
 import info.nightscout.androidaps.db.ProfileSwitch;
 import info.nightscout.androidaps.db.TemporaryBasal;
-import info.nightscout.androidaps.db.Treatment;
+import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.Loop.APSResult;
 import info.nightscout.androidaps.plugins.Loop.DeviceStatus;
 import info.nightscout.androidaps.plugins.Loop.LoopPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.DbLogger;
-import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.plugins.OpenAPSAMA.DetermineBasalResultAMA;
 import info.nightscout.androidaps.plugins.OpenAPSMA.DetermineBasalResultMA;
 
@@ -49,7 +55,6 @@ public class NSUpload {
                 data.put("pumpId", temporaryBasal.pumpId);
             data.put("created_at", DateUtil.toISOString(temporaryBasal.date));
             data.put("enteredBy", "openaps://" + MainApp.instance().getString(R.string.app_name));
-            data.put("notes", MainApp.sResources.getString(R.string.androidaps_tempbasalstartnote) + " " + temporaryBasal.absoluteRate + "u/h " + temporaryBasal.durationInMinutes + " min"); // ECOR
             if (originalExtendedAmount != null)
                 data.put("originalExtendedAmount", originalExtendedAmount); // for back synchronization
             Bundle bundle = new Bundle();
@@ -62,7 +67,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -88,7 +93,6 @@ public class NSUpload {
                     data.put("pumpId", temporaryBasal.pumpId);
                 data.put("created_at", DateUtil.toISOString(temporaryBasal.date));
                 data.put("enteredBy", "openaps://" + MainApp.instance().getString(R.string.app_name));
-                data.put("notes", MainApp.sResources.getString(R.string.androidaps_tempbasalstartnote) + " " + temporaryBasal.percentRate + "% " + temporaryBasal.durationInMinutes + " min"); // ECOR
                 Bundle bundle = new Bundle();
                 bundle.putString("action", "dbAdd");
                 bundle.putString("collection", "treatments");
@@ -100,7 +104,7 @@ public class NSUpload {
                 DbLogger.dbAdd(intent, data.toString());
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -111,7 +115,6 @@ public class NSUpload {
             data.put("eventType", CareportalEvent.TEMPBASAL);
             data.put("created_at", DateUtil.toISOString(time));
             data.put("enteredBy", "openaps://" + MainApp.instance().getString(R.string.app_name));
-            data.put("notes", MainApp.sResources.getString(R.string.androidaps_tempbasalendnote)); // ECOR
             if (isFakedTempBasal)
                 data.put("isFakedTempBasal", isFakedTempBasal);
             if (pumpId != 0)
@@ -126,7 +129,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -154,7 +157,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -182,7 +185,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -223,7 +226,7 @@ public class NSUpload {
                 log.debug("OpenAPS data too old to upload");
             }
             deviceStatus.device = "openaps://" + Build.MANUFACTURER + " " + Build.MODEL;
-            JSONObject pumpstatus = MainApp.getConfigBuilder().getJSONStatus();
+            JSONObject pumpstatus = ConfigBuilderPlugin.getActivePump().getJSONStatus();
             if (pumpstatus != null) {
                 deviceStatus.pump = pumpstatus;
             }
@@ -243,7 +246,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, deviceStatus.mongoRecord().toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -255,6 +258,7 @@ public class NSUpload {
             if (detailedBolusInfo.carbs != 0d) data.put("carbs", (int) detailedBolusInfo.carbs);
             data.put("created_at", DateUtil.toISOString(detailedBolusInfo.date));
             data.put("date", detailedBolusInfo.date);
+            data.put("isSMB", detailedBolusInfo.isSMB);
             if (detailedBolusInfo.pumpId != 0)
                 data.put("pumpId", detailedBolusInfo.pumpId);
             if (detailedBolusInfo.glucose != 0d)
@@ -266,7 +270,7 @@ public class NSUpload {
             if (detailedBolusInfo.carbTime != 0)
                 data.put("preBolus", detailedBolusInfo.carbTime);
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
         uploadCareportalEntryToNS(data);
     }
@@ -276,7 +280,7 @@ public class NSUpload {
             JSONObject data = new JSONObject();
             data.put("eventType", CareportalEvent.PROFILESWITCH);
             data.put("duration", profileSwitch.durationInMinutes);
-            data.put("profile", profileSwitch.profileName);
+            data.put("profile", profileSwitch.getCustomizedName());
             data.put("profileJson", profileSwitch.profileJson);
             data.put("profilePlugin", profileSwitch.profilePlugin);
             if (profileSwitch.isCPP) {
@@ -288,7 +292,7 @@ public class NSUpload {
             data.put("enteredBy", MainApp.instance().getString(R.string.app_name));
             uploadCareportalEntryToNS(data);
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -317,7 +321,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
 
     }
@@ -335,7 +339,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbRemove(intent, _id);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
 
     }
@@ -358,7 +362,7 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
         }
     }
 
@@ -374,7 +378,31 @@ public class NSUpload {
             data.put("notes", error);
             data.put("isAnnouncement", true);
         } catch (JSONException e) {
-            e.printStackTrace();
+            log.error("Unhandled exception", e);
+        }
+        bundle.putString("data", data.toString());
+        Intent intent = new Intent(Intents.ACTION_DATABASE);
+        intent.putExtras(bundle);
+        intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+        context.sendBroadcast(intent);
+        DbLogger.dbAdd(intent, data.toString());
+    }
+
+    public static void uploadBg(BgReading reading) {
+        Context context = MainApp.instance().getApplicationContext();
+        Bundle bundle = new Bundle();
+        bundle.putString("action", "dbAdd");
+        bundle.putString("collection", "entries");
+        JSONObject data = new JSONObject();
+        try {
+            data.put("device", "AndroidAPS-DexcomG5");
+            data.put("date", reading.date);
+            data.put("dateString", DateUtil.toISOString(reading.date));
+            data.put("sgv", reading.value);
+            data.put("direction", reading.direction);
+            data.put("type", "sgv");
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
         }
         bundle.putString("data", data.toString());
         Intent intent = new Intent(Intents.ACTION_DATABASE);
@@ -396,7 +424,7 @@ public class NSUpload {
                 data.put("created_at", DateUtil.toISOString(new Date()));
                 data.put("notes", MainApp.sResources.getString(R.string.androidaps_start));
             } catch (JSONException e) {
-                e.printStackTrace();
+                log.error("Unhandled exception", e);
             }
             bundle.putString("data", data.toString());
             Intent intent = new Intent(Intents.ACTION_DATABASE);
@@ -405,5 +433,71 @@ public class NSUpload {
             context.sendBroadcast(intent);
             DbLogger.dbAdd(intent, data.toString());
         }
+    }
+
+    public static void removeFoodFromNS(String _id) {
+        try {
+            Context context = MainApp.instance().getApplicationContext();
+            Bundle bundle = new Bundle();
+            bundle.putString("action", "dbRemove");
+            bundle.putString("collection", "food");
+            bundle.putString("_id", _id);
+            Intent intent = new Intent(Intents.ACTION_DATABASE);
+            intent.putExtras(bundle);
+            intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+            context.sendBroadcast(intent);
+            DbLogger.dbRemove(intent, _id);
+        } catch (Exception e) {
+            log.error("Unhandled exception", e);
+        }
+
+    }
+
+    public static void sendToXdrip(BgReading bgReading) {
+        final String XDRIP_PLUS_NS_EMULATOR = "com.eveningoutpost.dexdrip.NS_EMULATOR";
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US);
+
+        try {
+            final JSONArray entriesBody = new JSONArray();
+            JSONObject json = new JSONObject();
+            json.put("sgv", bgReading.value);
+            if (bgReading.direction == null) {
+                json.put("direction", "NONE");
+            } else {
+                json.put("direction", bgReading.direction);
+            }
+            json.put("device", "G5");
+            json.put("type", "sgv");
+            json.put("date", bgReading.date);
+            json.put("dateString", format.format(bgReading.date));
+            entriesBody.put(json);
+
+            final Bundle bundle = new Bundle();
+            bundle.putString("action", "add");
+            bundle.putString("collection", "entries");
+            bundle.putString("data", entriesBody.toString());
+            final Intent intent = new Intent(XDRIP_PLUS_NS_EMULATOR);
+            intent.putExtras(bundle).addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+            MainApp.instance().sendBroadcast(intent);
+            List<ResolveInfo> receivers = MainApp.instance().getPackageManager().queryBroadcastReceivers(intent, 0);
+            if (receivers.size() < 1) {
+                log.debug("No xDrip receivers found. ");
+            } else {
+                log.debug(receivers.size() + " xDrip receivers");
+            }
+
+
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public static boolean isIdValid(String _id) {
+        if (_id == null)
+            return false;
+        if (_id.length() == 24)
+            return true;
+        return false;
     }
 }

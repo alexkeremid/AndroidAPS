@@ -28,8 +28,8 @@ import info.nightscout.utils.SafeParse;
 public class SensitivityOref0Plugin implements PluginBase, SensitivityInterface {
     private static Logger log = LoggerFactory.getLogger(IobCobCalculatorPlugin.class);
 
-    private static boolean fragmentEnabled = true;
-    private static boolean fragmentVisible = false;
+    private boolean fragmentEnabled = true;
+    private boolean fragmentVisible = false;
 
     static SensitivityOref0Plugin plugin = null;
 
@@ -94,6 +94,11 @@ public class SensitivityOref0Plugin implements PluginBase, SensitivityInterface 
         if (type == SENSITIVITY) this.fragmentVisible = fragmentVisible;
     }
 
+    @Override
+    public int getPreferencesId() {
+        return R.xml.pref_absorption_oref0;
+    }
+
 
     @Override
     public AutosensResult detectSensitivity(long fromTime, long toTime) {
@@ -113,7 +118,7 @@ public class SensitivityOref0Plugin implements PluginBase, SensitivityInterface 
             return new AutosensResult();
         }
 
-        AutosensData current = IobCobCalculatorPlugin.getLastAutosensData();
+        AutosensData current = IobCobCalculatorPlugin.getLastAutosensData("SensitivityOref0"); // this is running inside lock already
         if (current == null) {
             log.debug("No current autosens data available");
             return new AutosensResult();

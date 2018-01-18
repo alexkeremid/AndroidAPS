@@ -65,7 +65,11 @@ public class SP {
     }
 
     static public long getLong(int resourceID, Long defaultValue) {
-        return SafeParse.stringToLong(sharedPreferences.getString(MainApp.sResources.getString(resourceID), defaultValue.toString()));
+        try {
+            return sharedPreferences.getLong(MainApp.sResources.getString(resourceID), defaultValue);
+        } catch (Exception e) {
+            return SafeParse.stringToLong(sharedPreferences.getString(MainApp.sResources.getString(resourceID), defaultValue.toString()));
+        }
     }
 
     static public long getLong(String key, Long defaultValue) {
@@ -85,12 +89,6 @@ public class SP {
     static public void putBoolean(int resourceID, boolean value) {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putBoolean(MainApp.sResources.getString(resourceID), value);
-        editor.apply();
-    }
-
-    static public void removeBoolean(int resourceID) {
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-        editor.remove(MainApp.sResources.getString(resourceID));
         editor.apply();
     }
 
@@ -130,9 +128,15 @@ public class SP {
         editor.apply();
     }
 
-    static public void removeString(int resourceID) {
+    static public void remove(int resourceID) {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.remove(MainApp.sResources.getString(resourceID));
+        editor.apply();
+    }
+
+    static public void remove(String key) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.remove(key);
         editor.apply();
     }
 }
