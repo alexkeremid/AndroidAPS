@@ -24,6 +24,7 @@ import info.nightscout.androidaps.events.EventProfileNeedsUpdate;
 import info.nightscout.androidaps.events.EventPumpStatusChanged;
 import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.logging.L;
+import info.nightscout.androidaps.plugins.bus.RxBus;
 import info.nightscout.androidaps.plugins.configBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.configBuilder.ProfileFunctions;
 import info.nightscout.androidaps.plugins.general.overview.dialogs.BolusProgressDialog;
@@ -157,6 +158,14 @@ public class DanaRSService extends Service {
             bleComm.sendMessage(new DanaRS_Packet_Option_Get_Pump_Time());
 
             long timeDiff = (danaRPump.pumpTime - System.currentTimeMillis()) / 1000L;
+            if (danaRPump.pumpTime == 0) {
+                // initial handshake was not successfull
+                // deinitialize pump
+                danaRPump.lastConnection = 0;
+                RxBus.INSTANCE.send(new EventDanaRNewStatus());
+                MainApp.bus().post(new EventInitializationChanged());
+                return;
+            }
             if (L.isEnabled(L.PUMPCOMM))
                 log.debug("Pump time difference: " + timeDiff + " seconds");
             if (Math.abs(timeDiff) > 3) {
@@ -173,7 +182,7 @@ public class DanaRSService extends Service {
 
                     //deinitialize pump
                     danaRPump.lastConnection = 0;
-                    MainApp.bus().post(new EventDanaRNewStatus());
+                    RxBus.INSTANCE.send(new EventDanaRNewStatus());
                     MainApp.bus().post(new EventInitializationChanged());
                     return;
                 } else {
@@ -211,7 +220,7 @@ public class DanaRSService extends Service {
                     log.debug("Approaching daily limit: " + danaRPump.dailyTotalUnits + "/" + danaRPump.maxDailyTotalUnits);
                 if (System.currentTimeMillis() > lastApproachingDailyLimit + 30 * 60 * 1000) {
                     Notification reportFail = new Notification(Notification.APPROACHING_DAILY_LIMIT, MainApp.gs(R.string.approachingdailylimit), Notification.URGENT);
-                    MainApp.bus().post(new EventNewNotification(reportFail));
+                    RxBus.INSTANCE.send(new EventNewNotification(reportFail));
                     NSUpload.uploadError(MainApp.gs(R.string.approachingdailylimit) + ": " + danaRPump.dailyTotalUnits + "/" + danaRPump.maxDailyTotalUnits + "U");
                     lastApproachingDailyLimit = System.currentTimeMillis();
                 }

@@ -16,17 +16,18 @@ import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.db.CareportalEvent;
 import info.nightscout.androidaps.events.EventNsFood;
 import info.nightscout.androidaps.events.EventNsTreatment;
+import info.nightscout.androidaps.logging.BundleLogger;
 import info.nightscout.androidaps.logging.L;
+import info.nightscout.androidaps.plugins.bus.RxBus;
 import info.nightscout.androidaps.plugins.general.nsclient.data.NSDeviceStatus;
 import info.nightscout.androidaps.plugins.general.nsclient.data.NSMbg;
 import info.nightscout.androidaps.plugins.general.nsclient.data.NSSettingsStatus;
 import info.nightscout.androidaps.plugins.general.overview.events.EventNewNotification;
 import info.nightscout.androidaps.plugins.general.overview.notifications.Notification;
+import info.nightscout.androidaps.plugins.general.smsCommunicator.SmsCommunicatorPlugin;
 import info.nightscout.androidaps.plugins.profile.ns.NSProfilePlugin;
 import info.nightscout.androidaps.plugins.pump.danaR.activities.DanaRNSHistorySync;
-import info.nightscout.androidaps.plugins.general.smsCommunicator.SmsCommunicatorPlugin;
-import info.nightscout.androidaps.plugins.source.SourceDexcomG5Plugin;
-import info.nightscout.androidaps.plugins.source.SourceDexcomG6Plugin;
+import info.nightscout.androidaps.plugins.source.SourceDexcomPlugin;
 import info.nightscout.androidaps.plugins.source.SourceEversensePlugin;
 import info.nightscout.androidaps.plugins.source.SourceGlimpPlugin;
 import info.nightscout.androidaps.plugins.source.SourceMM640gPlugin;
@@ -35,7 +36,6 @@ import info.nightscout.androidaps.plugins.source.SourcePoctechPlugin;
 import info.nightscout.androidaps.plugins.source.SourceTomatoPlugin;
 import info.nightscout.androidaps.plugins.source.SourceXdripPlugin;
 import info.nightscout.androidaps.receivers.DataReceiver;
-import info.nightscout.androidaps.logging.BundleLogger;
 import info.nightscout.androidaps.utils.JsonHelper;
 import info.nightscout.androidaps.utils.SP;
 
@@ -69,12 +69,8 @@ public class DataService extends IntentService {
             SourceMM640gPlugin.getPlugin().handleNewData(intent);
         } else if (Intents.GLIMP_BG.equals(action)) {
             SourceGlimpPlugin.getPlugin().handleNewData(intent);
-        } else if (Intents.DEXCOMG5_BG.equals(action)) {
-            SourceDexcomG5Plugin.getPlugin().handleNewData(intent);
-        } else if (Intents.DEXCOMG5_BG_NEW.equals(action)) {
-            SourceDexcomG5Plugin.getPlugin().handleNewData(intent);
-        } else if (Intents.DEXCOMG6_BG.equals(action)) {
-            SourceDexcomG6Plugin.getPlugin().handleNewData(intent);
+        } else if (Intents.DEXCOM_BG.equals(action)) {
+            SourceDexcomPlugin.INSTANCE.handleNewData(intent);
         } else if (Intents.POCTECH_BG.equals(action)) {
             SourcePoctechPlugin.getPlugin().handleNewData(intent);
         } else if (Intents.TOMATO_BG.equals(action)) {
@@ -105,7 +101,7 @@ public class DataService extends IntentService {
                         Intents.ACTION_REMOVED_TREATMENT.equals(action) ||
                         Intents.ACTION_NEW_CAL.equals(action) ||
                         Intents.ACTION_NEW_MBG.equals(action))
-                ) {
+        ) {
             handleNewDataFromNSClient(intent);
         } else if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(action)) {
             SmsCommunicatorPlugin.getPlugin().handleNewData(intent);
@@ -259,7 +255,7 @@ public class DataService extends IntentService {
             if (date > now - 15 * 60 * 1000L && !notes.isEmpty()
                     && !enteredBy.equals(SP.getString("careportal_enteredby", "AndroidAPS"))) {
                 Notification announcement = new Notification(Notification.NSANNOUNCEMENT, notes, Notification.ANNOUNCEMENT, 60);
-                MainApp.bus().post(new EventNewNotification(announcement));
+                RxBus.INSTANCE.send(new EventNewNotification(announcement));
             }
         }
     }
